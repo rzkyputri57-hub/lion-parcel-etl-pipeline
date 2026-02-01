@@ -1,18 +1,44 @@
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+import requests
+import csv
 
 
-def extract():
-    print("Extracting data...")
+def extract(ti):
+    url = "https://jsonplaceholder.typicode.com/posts"
+    response = requests.get(url)
+    data = response.json()
+
+    ti.xcom_push(key="raw_data", value=data)
 
 
-def transform():
-    print("Transforming data...")
+def transform(ti):
+    raw_data = ti.xcom_pull(key="raw_data", task_ids="extract_task")
+
+    cleaned_data = []
+
+    for item in raw_data:
+        cleaned_data.append({
+            "post_id": item["id"],
+            "title": item["title"].upper(),
+            "user_id": item["userId"]
+        })
+
+    ti.xcom_push(key="clean_data", value=cleaned_data)
 
 
-def load():
-    print("Loading data...")
+def load(ti):
+    clean_data = ti.xcom_pull(key="clean_data", task_ids="transform_task")
+
+    file_path = "/tmp/lion_parcel_output.csv"
+
+    with open(file_path, mode="w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["post_id", "title", "user_id"])
+        writer.writeheader()
+        writer.writerows(clean_data)
+
+    print(f"Data saved to {file_path}")
 
 
 with DAG(
